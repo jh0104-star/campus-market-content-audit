@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 核心单元测试（core 层不变量，失败即阻断）
+        run: python -m pytest tests/test_core.py -q
+
+      - name: 冒烟测试（页面 + 接口 + 审核链路，失败即阻断）
+        run: python tests/smoke_test.py
+
+      - name: 效果评估（强制本地引擎，指标可复现）
+        run: python data/seed.py --eval --md
+
+      - name: Streamlit 页面逻辑回归
+        run: python tests/ui_check.py
+
+      - name: 性能基准
+        run: python tests/bench.py 3
+
+      - name: 评估门槛（holdout 严格准确 >= 90%，拦截召回 >= 95%）
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from data.seed import evaluate
+          res = evaluate(False)              # 默认强制本地分析器
+          dev, hold = res["dev"], res["holdout"]
+          assert dev["strict"] >= 0.95, f"dev 严格准确率退化: {dev['strict']:.1%}"
+          assert hold["strict"] >= 0.90, f"holdout 严格准确率退化: {hold['strict']:.1%}"
+          assert hold["recall"] >= 0.95, f"holdout 拦截召回退化: {hold['recall']:.1%}"
+          print(f"门槛通过 dev={dev['strict']:.1%} holdout={hold['strict']:.1%} "
+                f"recall={hold['recall']:.1%}")
+          PY
