@@ -79,3 +79,23 @@ def test_placeholder_still_rejected():
     res = audit({"title": "测试测试测试", "description": "测试测试测试测试测试测试",
                  "price": 1})
     assert res.decision == "reject"
+
+
+# ------------------------------------------------------------------ #
+# 缺口三：出售/代开发票没有任何类目覆盖
+# ------------------------------------------------------------------ #
+@pytest.mark.parametrize("title,desc", [
+    ("代购发票 需要的联系", "可开各类发票，金额可议"),
+    ("出售发票", "餐饮住宿加油均可，点数低"),
+])
+def test_invoice_selling_rejected(title, desc):
+    res = audit({"title": title, "description": desc, "price": 100})
+    assert res.decision == "reject"
+    assert "invoice" in res.rule.categories_hit
+
+
+def test_invoice_as_proof_not_blocked():
+    """「有发票」是二手电子产品的正常卖点（保修凭证），不能被当成倒卖发票。"""
+    res = audit({"title": "iPad 2021 有发票", "description": "九成新，带发票和充电器，保修期内",
+                 "price": 1800})
+    assert not res.rule.blocked, res.reasons
