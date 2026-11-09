@@ -15,9 +15,10 @@ from typing import Dict, List, Optional, Tuple
 
 from .antievasion import evasion_hits, strip_noise, trad_to_simp
 from .lexicon import (
-    ABNORMAL_PRICE_NUMBERS, BANNED_RULES, CATEGORIES, CATEGORY_MAP,
-    CONDITION_NEW_WORDS, CONTACT_PATTERNS, DRAIN_WORDS, FRAUD_WORDS,
-    HYPE_WORDS, PLACEHOLDER_WORDS, PRICE_HINTS,
+    ABNORMAL_PRICE_NUMBERS, ALCOHOL_BRANDS, BANNED_RULES, BRAND_EXCLUDE,
+    CATEGORIES, CATEGORY_MAP, CONDITION_NEW_WORDS, CONTACT_PATTERNS,
+    DRAIN_WORDS, FRAUD_WORDS, HYPE_WORDS, PLACEHOLDER_WORDS, PRICE_HINTS,
+    TOBACCO_BRANDS, TRADE_UNITS,
 )
 from .logutils import get_logger, log_swallow
 
@@ -222,6 +223,7 @@ class RuleEngine:
 
         self._check_account(item, result)
         self._check_banned(full_norm, result)
+        self._check_brand_combo(full_norm, result)
         self._check_price(content, price, cat_key, result)
         self._check_fake(title, desc, price, item, content_raw, result)
         self._check_contact(contact, full_raw, result)
@@ -286,6 +288,35 @@ class RuleEngine:
                 f"检测到「{word}」的规避写法（{strategy}）", rule["advice"], score,
                 terms=[word], evasion=strategy))
             break       # 同一条规则只记一次，避免重复计分
+
+    # ---------------- 品牌 + 交易规格 ----------------
+    def _check_brand_combo(self, text_norm: str, result: RuleResult) -> None:
+        """只写品牌不写品类时的兜底召回（软中华一条 / 飞天茅台两瓶）。
+
+        纯关键词表对这种写法无能为力：文案里没有"香烟""白酒"任何品类词。
+        这里要求「品牌词 × 交易量词」同时出现才判定，且受豁免词约束，
+        避免「中华铅笔」「茅台镇旅游」「中华田园犬」被误伤。
+        """
+        if not text_norm or any(x in text_norm for x in BRAND_EXCLUDE):
+            return
+        units = [u for u in TRADE_UNITS if u in text_norm]
+        if not units:
+            return
+        for brands, cat_key, name, advice in (
+            (TOBACCO_BRANDS, "tobacco", "烟草",
+             "校园内禁止烟草类交易，请删除相关商品信息。"),
+            (ALCOHOL_BRANDS, "alcohol", "酒精",
+             "校园内禁止酒精类交易，请删除相关商品信息。"),
+        ):
+            hit = [b for b in brands if b in text_norm]
+            if not hit:
+                continue
+            result.categories_hit.add(cat_key)
+            result.hits.append(RuleHit(
+                f"违禁品-{name}（品牌+规格）", "banned", "high",
+                f"{hit[0]} + {units[0]}",
+                advice, 90, terms=hit[:2]))
+            return
 
     # ---------------- 价格异常 ----------------
     def _check_price(self, text: str, price: Optional[float], cat_key: str, result: RuleResult) -> None:
