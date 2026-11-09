@@ -1,0 +1,3 @@
+# 开发/测试依赖：核心单元测试用 pytest（tests/test_core.py）
+-r requirements.txt
+pytest>=7,<9

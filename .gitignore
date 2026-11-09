@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 数据与运行时产物
+data/*.db
+data/*.db-wal
+data/*.db-shm
+# 用户上传的图片（含个人信息，不入库管理，勿提交）
+data/uploads/
+*.log
+
+# 本地配置（含密钥，切勿提交）
+.env
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
