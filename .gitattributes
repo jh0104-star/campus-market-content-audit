@@ -1,0 +1,10 @@
+# 统一换行符：避免 Windows 工作区把 shell 脚本改成 CRLF 后在 Linux 容器里跑不起来
+*.sh   text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.txt  text eol=lf
+*.bat  text eol=crlf
+*.png  binary
+*.svg  text eol=lf

@@ -187,6 +187,8 @@ dev / holdout **双轨评估**（44 / 28 条，防开卷效应）、6 类测试�
 
 ## 七、快速开始
 
+### 7.1 方式 A：本机直接运行
+
 ```bash
 # 1. 安装依赖（开发/测试用 requirements-dev.txt，会额外装上 pytest）
 pip install -r requirements.txt
@@ -204,6 +206,40 @@ streamlit run ui_streamlit.py  # 可视化大屏 -> http://127.0.0.1:8501
 
 首次启动会自动创建内置管理员 `admin / admin123`（管理后台 → 运维中心登录）。
 部署前请在 `.env` 中修改 `DEFAULT_ADMIN_PASSWORD`；不登录也能用旧方式（本机访问）调用管理接口。
+
+### 7.2 方式 B：Docker（一条命令）
+
+```bash
+docker compose up -d           # 构建并启动，端口 8000
+# 浏览器打开 http://127.0.0.1:8000
+docker compose logs -f audit   # 看启动日志
+docker compose down            # 停止并删除容器（./data 里的数据保留）
+```
+
+没有 Compose 时手动构建运行：
+
+```bash
+docker build -t campus-market-content-audit:1.0 .
+docker run -d -p 8000:8000 --name campus-audit \
+  -e DEFAULT_ADMIN_PASSWORD=change-me-please \
+  -e SECRET_KEY=please-replace-with-a-long-random-string \
+  -e LLM_PROVIDER=deepseek -e LLM_API_KEY=sk-xxxxxxxx \
+  -v "$PWD/data:/app/data" \
+  campus-market-content-audit:1.0
+```
+
+镜像里的几处刻意设计：
+
+| 项 | 做法 | 为什么必须这样 |
+|---|---|---|
+| 监听地址 | 镜像内置 `FLASK_HOST=0.0.0.0` | 代码默认 `127.0.0.1`，容器内监听回环会导致端口映射不通 |
+| 首次启动 | entrypoint 检测到**没有** `data/campus_market.db` 才灌演示数据 | 无条件 `seed` 每重启一次就重复写入 44 条 |
+| 数据持久化 | `./data` 挂到 `/app/data` | SQLite、上传图、引擎选择（`runtime.json`）全在 `data/` 下 |
+| 运行身份 | 非 root（uid 10001） | 进程被攻破时影响面更小 |
+| 探活 | `HEALTHCHECK` 用标准库打首页 | 镜像里不装 `curl`，少一层依赖 |
+| 体积 | pandas / streamlit 占大头 | 只要审核服务不要大屏时，可从 `requirements.txt` 去掉 `streamlit`、`altair` |
+
+> 说明：作者本机没有 Docker，**镜像未实际 `build` 过**；已验证的是 `docker-entrypoint.sh` 的完整流程（无库 → 灌 44 条 → 起服务 → 首页 200 → 进程杀掉后探活转非零）、`sh -n` 语法、`docker-compose.yml` 的 YAML 结构。首次 `docker compose up` 若报错，多半是网络拉取 `python:3.11-slim` 或 pip 装包超时，换镜像源即可。
 
 ## 八、接入真实大模型
 

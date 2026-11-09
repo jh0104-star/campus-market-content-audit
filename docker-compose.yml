@@ -1,0 +1,29 @@
+# 一条命令起服务：docker compose up -d
+# 说明：这里把宿主机 ./data 挂进容器，数据库/上传图/引擎选择都会留在宿主机上，容器删了也不丢。
+# 不想让容器写宿主机目录时，删掉 volumes 那两行即可（数据只存活在容器内）。
+services:
+  audit:
+    build: .
+    image: campus-market-content-audit:1.0
+    container_name: campus-audit
+    ports:
+      - "8000:8000"
+    environment:
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: "8000"
+      # ↓ 部署前务必改掉这三项
+      DEFAULT_ADMIN_PASSWORD: "change-me-please"
+      SECRET_KEY: "change-me-to-a-long-random-string-at-least-32-chars"
+      # ADMIN_TOKEN: "change-me-admin-token"
+      # 想接真实大模型时再加这两行（或改用 env_file 读 .env）
+      # LLM_PROVIDER: deepseek
+      # LLM_API_KEY: sk-xxxxxxxxxxxxxxxx
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+# 若想用 .env 文件统一管理配置（Docker Compose v2.24+）：
+#   env_file:
+#     - path: .env
+#       required: false
+# 老版本 Compose 不支持 required，改为直接写 environment 或运行时 --env-file .env
