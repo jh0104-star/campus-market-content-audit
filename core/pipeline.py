@@ -198,9 +198,24 @@ class AuditPipeline:
             res.decision = "pass"
         res.decision_label = DECISION_LABEL[res.decision]
 
-        # 4) 理由与建议
-        for h in rule.hits:
-            res.reasons.append(f"[{h.rule}] {h.evidence}")
+        # 4) 理由与建议：按"硬红线 → 高危 → 中危 → 低危"排序。
+        # 此前按命中顺序输出，出现结论是"拒绝"、第一条理由却是"描述过短"的错位叙述，
+        # 复核的人抓不到真正原因；拒绝结论必须能一句话说清依据。
+        severity_rank = {"high": 0, "medium": 1, "low": 2}
+        ordered = sorted(
+            rule.hits,
+            key=lambda h: (0 if h.type == "banned" else 1,
+                           severity_rank.get(h.severity, 3), -h.score),
+        )
+        reasons = [f"[{h.rule}] {h.evidence}" for h in ordered]
+        if res.decision == "reject" and not any(
+                h.type == "banned" and h.severity == "high" for h in ordered):
+            top = max(ordered, key=lambda h: h.score, default=None)
+            basis = (f"{top.rule}：{top.evidence}" if top
+                     else (llm.violations[0] if llm.violations else "多项风险信号叠加"))
+            reasons.insert(0, f"[综合判定] 风险分 {res.risk_score}，主要依据——{basis}")
+        res.reasons = reasons
+        for h in ordered:
             if h.advice not in res.suggestions:
                 res.suggestions.append(h.advice)
         res.reasons += llm.violations

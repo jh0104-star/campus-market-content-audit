@@ -99,3 +99,22 @@ def test_invoice_as_proof_not_blocked():
     res = audit({"title": "iPad 2021 有发票", "description": "九成新，带发票和充电器，保修期内",
                  "price": 1800})
     assert not res.rule.blocked, res.reasons
+
+
+# ------------------------------------------------------------------ #
+# 缺口四：拒绝结论的理由顺序错位（"结论对、理由错"）
+# ------------------------------------------------------------------ #
+def test_reject_reason_starts_with_hard_rule():
+    """命中了硬红线，第一条理由就必须是那条红线，而不是"描述过短"。"""
+    res = audit({"title": "电击棒", "description": "女生防身用，带电击，九成新", "price": 80})
+    assert res.decision == "reject"
+    assert res.reasons[0].startswith("[违禁品-"), res.reasons[:3]
+
+
+def test_reject_without_banned_hit_has_summary_reason():
+    """没有硬红线、靠多项信号叠加到拒绝时，必须给出"[综合判定]"和主要依据。"""
+    res = audit({"title": "转让闲置", "description": "想要的私聊，价格私谈，先款后货",
+                 "price": 0})
+    assert res.decision == "reject"
+    assert not any(h.type == "banned" for h in res.rule.hits)
+    assert res.reasons[0].startswith("[综合判定]"), res.reasons[:3]
