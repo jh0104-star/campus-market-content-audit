@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block body %}
+
+<div class="stats">
+  <div class="stat info"><div class="num">{{ stats.total }}</div><div class="label">累计信息条数</div></div>
+  <div class="stat ok"><div class="num">{{ stats.by_status.get('pass', 0) }}</div><div class="label">自动通过</div></div>
+  <div class="stat warn"><div class="num">{{ stats.by_status.get('review', 0) }}</div><div class="label">转人工复核</div></div>
+  <div class="stat bad"><div class="num">{{ stats.by_status.get('reject', 0) }}</div><div class="label">已拦截</div></div>
+  <div class="stat"><div class="num">{{ stats.avg_risk }}</div><div class="label">平均风险分</div></div>
+</div>
+
+<div class="card engine-bar">
+  <div class="engine-left">
+    <span class="engine-title">⚙️ 审核引擎</span>
+    <select id="engineSelect" class="engine-select"></select>
+    <span class="engine-hint" id="engineStatus">加载中…</span>
+  </div>
+  <span class="engine-badge" id="engineBadge">—</span>
+</div>
+
+<div class="grid-2">
+  <!-- 发布表单 -->
+  <div class="card">
+    <h2><span class="dot"></span>发布二手信息</h2>
+    <form id="publishForm">
+      <div class="field">
+        <label>标题 *</label>
+        <input name="title" id="f-title" placeholder="如：高等数学同济第七版上册" required>
+      </div>
+      <div class="field">
+        <label>详细描述</label>
+        <textarea name="description" id="f-desc" placeholder="购入时间、成色、转手原因、配件情况…"></textarea>
+      </div>
+      <div class="row">
+        <div class="field"><label>售价（元）</label><input name="price" id="f-price" type="number" step="0.01" placeholder="0.00"></div>
+        <div class="field">
+          <label>成色</label>
+          <select name="condition" id="f-cond">
+            <option value="">未填写</option><option>全新</option><option>九成新</option>
+            <option>八成新</option><option>七成新</option><option>有瑕疵</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>卖家学号</label><input name="seller_id" id="f-sid" placeholder="如 2021010101"></div>
+        <div class="field"><label>姓名</label><input name="seller_name" id="f-sname" placeholder="如 张明远"></div>
+      </div>
+      <div class="field"><label>联系方式</label><input name="contact" id="f-contact" placeholder="手机号 / 微信 / QQ"></div>
+      <div class="field">
+        <label>实物照片（可选，用于盗图查重与占位图识别）</label>
+        <input type="file" id="f-image" name="image" accept="image/*">
+        <div class="hint" id="imgHint">未选择图片</div>
+      </div>
+      <label class="checkbox" style="margin-bottom:14px">
+        <input type="checkbox" id="f-img"> 已上传实物照片
+      </label>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btnAudit">🤖 智能审核（不入库）</button>
+        <button type="button" class="btn btn-ghost" id="btnSubmit">✅ 审核并发布</button>
+        <button type="reset" class="btn btn-ghost">清空</button>
+      </div>
+    </form>
+    <div style="margin-top:14px">
+      <div class="hint">快速填入示例：</div>
+      <div class="samples" id="samples">
+        {% for s in samples %}
+        <button data-t="{{ s.title }}" data-d="{{ s.description }}" data-p="{{ s.price }}">{{ s.short }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 审核结果 -->
+  <div class="card" id="resultCard">
+    <h2><span class="dot"></span>智能审核结果</h2>
+    <div class="result-empty" id="empty">
+      <span class="icon">🔍</span>
+      填写信息后点击「智能审核」，系统将输出<br>决策 / 风险分 / 分类 / 命中规则 / 大模型结论
+    </div>
+    <div id="result" style="display:none"></div>
+  </div>
+</div>
+
+<!-- 批量预检 -->
+<div class="card">
+  <h2><span class="dot"></span>批量预检（一次最多 50 条，只审核不入库）</h2>
+  <div class="hint" style="margin-bottom:8px">
+    每行一条，格式：<code>标题 | 描述 | 价格</code>（价格可省略）
+  </div>
+  <textarea id="batchInput" rows="4" style="width:100%" placeholder="高等数学同济第七版 | 九成新，无笔记 | 25&#10;出 iPhone 13 128G | 国行双卡，电池 92% | 3200&#10;代写论文包过 | 加微信详谈"></textarea>
+  <div class="actions" style="margin-top:10px">
+    <button type="button" class="btn btn-primary btn-sm" id="btnBatch">批量审核</button>
+    <span class="hint" id="batchSummary">—</span>
+  </div>
+  <div id="batchResult" style="margin-top:10px"></div>
+</div>
+
+<!-- 商品墙 -->
+<div class="card">
+  <h2><span class="dot"></span>最新发布（近 {{ items|length }} 条）</h2>
+  {% if items %}
+  <div class="wall">
+    {% for it in items %}
+    <div class="item" style="border-top-color:{{ cat_color.get(it.category, '#8395a7') }}">
+      <div class="i-title">{{ it.title }}</div>
+      <div class="i-desc">{{ it.description or '（无描述）' }}</div>
+      <div class="tags" style="margin:10px 0 0">
+        <span class="tag gray">{{ cat_name.get(it.category, '其他') }}{% if it.sub_category %} · {{ it.sub_category }}{% endif %}</span>
+        <span class="tag">{{ it.seller_name or it.seller_id or '匿名' }}</span>
+      </div>
+      <div class="i-foot">
+        <span class="price">{% if it.price is not none %}¥{{ '%g'|format(it.price) }}{% else %}--{% endif %}</span>
+        <span class="pill {{ status_meta.get(it.status, ['','info'])[1] }}">{{ status_meta.get(it.status, ['待审核'])[0] }} · {{ it.risk_score }}分</span>
+        <a href="#" onclick="reportItem({{ it.id }});return false" class="hint" style="margin-left:auto">举报</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">暂无数据，可运行 <code>python data/seed.py</code> 生成模拟数据</div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

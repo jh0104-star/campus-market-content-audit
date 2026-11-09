@@ -1,0 +1,508 @@
+{% extends "base.html" %}
+{% block body %}
+
+<div class="stats">
+  <div class="stat info"><div class="num">{{ stats.total }}</div><div class="label">累计信息</div></div>
+  <div class="stat ok"><div class="num">{{ stats.by_status.get('pass', 0) }}</div><div class="label">自动通过</div></div>
+  <div class="stat warn"><div class="num">{{ stats.by_status.get('review', 0) }}</div><div class="label">待人工复核</div></div>
+  <div class="stat bad"><div class="num">{{ stats.by_status.get('reject', 0) }}</div><div class="label">已拒绝</div></div>
+  <div class="stat"><div class="num">{{ stats.avg_risk }}</div><div class="label">平均风险分</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2><span class="dot"></span>近 14 日发布趋势</h2>
+    {% if trend %}
+    <div class="bars">
+      {% set maxv = trend|map(attribute='total')|max or 1 %}
+      {% for t in trend %}
+      <div class="bar" title="{{ t.d }}：共 {{ t.total }} 条">
+        <i style="height:{{ (t.total / maxv * 120)|round|int }}px"></i>
+        <span>{{ t.d[5:] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="legend"><span><i style="background:#4f7cff"></i>当日发布量</span>
+      <span>通过 {{ trend|sum(attribute='passed') }} ｜ 复核 {{ trend|sum(attribute='reviewed') }} ｜ 拒绝 {{ trend|sum(attribute='rejected') }}</span></div>
+    {% else %}<div class="empty">暂无数据</div>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2><span class="dot"></span>品类分布</h2>
+    {% set total = stats.total or 1 %}
+    {% for c in categories %}
+      {% set n = stats.by_category.get(c.key, 0) %}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="width:86px;font-size:13px">{{ c.icon }} {{ c.name }}</span>
+        <div style="flex:1;height:16px;background:#eef1f8;border-radius:99px;overflow:hidden">
+          <i style="display:block;height:100%;width:{{ (n / total * 100)|round(1) }}%;background:{{ c.color }}"></i>
+        </div>
+        <span style="width:34px;text-align:right;font-size:12px;color:#6b7280">{{ n }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="dot"></span>审核工作台</h2>
+  <form class="filters" method="get">
+    <select name="status">
+      <option value="">全部状态</option>
+      <option value="pass" {% if filters.status=='pass' %}selected{% endif %}>自动通过</option>
+      <option value="review" {% if filters.status=='review' %}selected{% endif %}>转人工复核</option>
+      <option value="reject" {% if filters.status=='reject' %}selected{% endif %}>拒绝发布</option>
+    </select>
+    <select name="category">
+      <option value="">全部分类</option>
+      {% for c in categories %}
+      <option value="{{ c.key }}" {% if filters.category==c.key %}selected{% endif %}>{{ c.icon }} {{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <input name="keyword" placeholder="搜索标题/描述/学号" value="{{ filters.keyword }}">
+    <button class="btn btn-primary btn-sm" type="submit">筛选</button>
+    <a class="btn btn-ghost btn-sm" href="/admin">重置</a>
+  </form>
+
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>ID</th><th>标题 / 描述</th><th>价格</th><th>分类</th><th>风险</th><th>状态</th><th>决策依据</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for it in items %}
+    <tr>
+      <td>{{ it.id }}</td>
+      <td class="td-title"><b>{{ it.title }}</b><div class="td-desc">{{ (it.description or '—')[:46] }}</div>
+        <div class="td-desc">{{ it.seller_name }} · {{ it.seller_id }} · {{ it.created_at }}</div></td>
+      <td>{% if it.price is not none %}¥{{ '%g'|format(it.price) }}{% else %}--{% endif %}</td>
+      <td>{{ cat_name.get(it.category, '其他') }}{% if it.sub_category %}<div class="td-desc">{{ it.sub_category }}</div>{% endif %}</td>
+      <td><span class="pill {{ 'bad' if it.risk_score>=70 else ('warn' if it.risk_score>=35 else 'ok') }}">{{ it.risk_score }}</span>
+        <div class="td-desc">规则{{ it.rule_score }} / 模型{{ it.llm_score }}</div></td>
+      <td><span class="pill {{ status_meta.get(it.status, ['','info'])[1] }}">{{ status_meta.get(it.status, ['待审核'])[0] }}</span></td>
+      <td class="td-desc">{{ (it.reason or '')[:70] }}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="review({{ it.id }},'pass')">通过</button>
+        <button class="btn btn-ghost btn-sm" onclick="review({{ it.id }},'review')">复核</button>
+        <button class="btn btn-ghost btn-sm" onclick="review({{ it.id }},'reject')">拒绝</button>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8"><div class="empty">暂无符合条件的数据</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="dot"></span>待处理申诉（{{ appeals|length }}）</h2>
+  {% if appeals %}
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>ID</th><th>商品</th><th>卖家</th><th>申诉理由</th><th>提交时间</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for a in appeals %}
+    <tr>
+      <td>{{ a.id }}</td>
+      <td class="td-title">#{{ a.item_id }}</td>
+      <td class="td-desc">{{ a.seller_name or a.seller_id }}<div class="td-desc">{{ a.seller_id }}</div></td>
+      <td class="td-desc">{{ a.reason[:60] }}</td>
+      <td class="td-desc">{{ a.created_at }}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-primary btn-sm" onclick="handleAppeal({{ a.id }},'accepted')">申诉成立</button>
+        <button class="btn btn-ghost btn-sm" onclick="handleAppeal({{ a.id }},'rejected')">驳回</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<div class="empty">当前没有待处理申诉</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2><span class="dot"></span>规则治理与闭环学习
+    <span class="tag gray" id="govVersion">加载中…</span></h2>
+  <div class="filters" style="margin-bottom:10px">
+    <button class="btn btn-primary btn-sm" type="button" onclick="runReplay()">重放回归</button>
+    <a class="btn btn-sm" href="/api/export.csv">导出审核明细 CSV</a>
+  </div>
+  <div id="govSummary" class="hint">加载中…</div>
+  <div id="govReplay" style="margin:8px 0"></div>
+  <div style="max-height:280px;overflow:auto">
+    <table id="govTable"></table>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2><span class="dot"></span>卖家黑名单</h2>
+    <form class="filters" onsubmit="addBlack(this);return false">
+      <input name="user_id" placeholder="学号" required>
+      <input name="reason" placeholder="原因（可选）">
+      <button class="btn btn-primary btn-sm" type="submit">加入黑名单</button>
+    </form>
+    {% if blacklist %}
+    <div class="samples">
+      {% for u in blacklist %}<span class="tag red">{{ u }}
+        <a href="#" onclick="delBlack('{{ u }}');return false" style="color:#b91c1c">×</a></span>{% endfor %}
+    </div>
+    {% else %}<div class="hint">黑名单为空。加入后该学号发布的信息将被直接拦截。</div>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2><span class="dot"></span>最近审核日志</h2>
+    <div style="max-height:260px;overflow:auto">
+    <table>
+      {% for lg in logs %}
+      <tr><td style="width:60px">{{ lg.item_id or '-' }}</td><td>{{ lg.action }}</td>
+          <td class="td-desc">{{ lg.detail[:40] }}</td><td class="td-desc">{{ lg.created_at }}</td></tr>
+      {% else %}<tr><td><div class="empty">暂无日志</div></td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 运维中心：权限 / 导入导出 / 日志 / 通知 / 批量 ==================== -->
+<div class="card">
+  <h2><span class="dot"></span>运维中心
+    {% if me %}<span class="tag gray">当前：{{ me.display_name or me.username }}（{{ me.role_name }}）</span>
+    {% else %}<span class="tag red">未登录：权限、通知、批量等能力需先登录</span>{% endif %}</h2>
+
+  {% if not me %}
+  <form class="filters" onsubmit="login(this);return false">
+    <input name="username" placeholder="用户名" required>
+    <input name="password" type="password" placeholder="口令" required>
+    <button class="btn btn-primary btn-sm" type="submit">登录</button>
+    <span class="hint">默认管理员 admin / admin123（见 .env DEFAULT_ADMIN_PASSWORD）</span>
+  </form>
+  {% else %}
+  <form class="filters" onsubmit="logout();return false">
+    <button class="btn btn-ghost btn-sm" type="submit">退出登录</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="grid-2">
+  {% if can.user %}
+  <div class="card">
+    <h2><span class="dot"></span>用户与权限</h2>
+    <form class="filters" onsubmit="createUser(this);return false">
+      <input name="username" placeholder="用户名" required>
+      <input name="password" type="password" placeholder="口令(≥6位)" required>
+      <select name="role">{% for k, v in role_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <input name="seller_id" placeholder="学号(卖家可选)">
+      <button class="btn btn-primary btn-sm" type="submit">新建</button>
+    </form>
+    <div style="max-height:280px;overflow:auto">
+    <table>
+      <tr><th>用户</th><th>角色</th><th>学号</th><th>状态</th><th>操作</th></tr>
+      {% for u in users %}
+      <tr>
+        <td class="td-title">{{ u.display_name or u.username }}<div class="td-desc">{{ u.username }} · 最近登录 {{ u.last_login_at or '—' }}</div></td>
+        <td>
+          <select onchange="setRole({{ u.id }}, this.value)" style="padding:2px">
+            {% for k, v in role_names.items() %}
+            <option value="{{ k }}" {% if u.role == k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="td-desc">{{ u.seller_id or '—' }}</td>
+        <td><span class="pill {{ 'ok' if u.status == 'active' else 'bad' }}">{{ '启用' if u.status == 'active' else '停用' }}</span></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" onclick="toggleUser({{ u.id }}, '{{ u.status }}')">{{ '停用' if u.status == 'active' else '启用' }}</button>
+        </td>
+      </tr>
+      {% else %}<tr><td><div class="empty">暂无用户</div></td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2><span class="dot"></span>数据导出与导入</h2>
+    <div class="filters">
+      <a class="btn btn-sm" href="/api/export?fmt=csv">导出 CSV</a>
+      <a class="btn btn-sm" href="/api/export?fmt=json">导出 JSON</a>
+      <a class="btn btn-ghost btn-sm" href="/api/export/template">导入模板</a>
+    </div>
+    {% if can.import %}
+    <form class="filters" style="margin-top:8px" onsubmit="importData(this);return false">
+      <input type="file" name="file" accept=".csv,.json,.txt">
+      <select name="mode">
+        <option value="submit">审核并入库</option>
+        <option value="audit">只审核不入库</option>
+        <option value="restore">原样恢复备份</option>
+      </select>
+      <label class="hint"><input type="checkbox" name="dry_run"> 空跑预览</label>
+      <button class="btn btn-primary btn-sm" type="submit">导入</button>
+    </form>
+    {% endif %}
+    <div id="ioResult" class="hint"></div>
+  </div>
+</div>
+
+<div class="grid-2">
+  {% if can.batch %}
+  <div class="card">
+    <h2><span class="dot"></span>批量处理</h2>
+    <form class="filters" onsubmit="runBatch(this);return false">
+      <select name="op">{% for k, v in batch_ops.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <input name="ids" placeholder="改判/删除：逗号分隔的 ID，如 1,2,3">
+      <input name="status" placeholder="改判状态 pass/review/reject" style="width:150px">
+      <button class="btn btn-primary btn-sm" type="submit">执行</button>
+    </form>
+    <div id="batchResult" class="hint"></div>
+    <div style="max-height:220px;overflow:auto">
+      <table>
+        <tr><th>#</th><th>操作</th><th>条目</th><th>成功/失败</th><th>耗时</th><th>状态</th></tr>
+        {% for j in jobs %}
+        <tr><td>{{ j.id }}</td><td class="td-desc">{{ batch_ops.get(j.op, j.op) }}</td>
+            <td>{{ j.total }}</td><td>{{ j.success }} / {{ j.failed }}</td>
+            <td class="td-desc">{{ j.duration_ms }} ms</td>
+            <td><span class="pill {{ 'ok' if j.status == 'done' else 'bad' }}">{{ j.status }}</span></td></tr>
+        {% else %}<tr><td><div class="empty">暂无批量任务</div></td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if me %}
+  <div class="card">
+    <h2><span class="dot"></span>消息通知</h2>
+    {% if can.notify_broadcast %}
+    <form class="filters" onsubmit="broadcast(this);return false">
+      <input name="title" placeholder="通知标题" required style="min-width:160px">
+      <input name="content" placeholder="通知内容">
+      <select name="role"><option value="">全体</option>
+        {% for k, v in role_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <button class="btn btn-primary btn-sm" type="submit">广播</button>
+    </form>
+    {% endif %}
+    <div class="filters"><button class="btn btn-ghost btn-sm" type="button" onclick="readAll()">全部标为已读</button></div>
+    <div style="max-height:240px;overflow:auto">
+      <table>
+        {% for n in notifications %}
+        <tr>
+          <td style="width:56px"><span class="pill {{ 'bad' if n.level == 'error' else ('warn' if n.level == 'warn' else ('ok' if n.level == 'success' else 'info')) }}">{{ n.level }}</span></td>
+          <td class="td-title">{{ n.title }}<div class="td-desc">{{ n.content[:60] }} · {{ n.created_at }}</div></td>
+          <td style="width:70px">{% if not n.is_read %}<button class="btn btn-ghost btn-sm" onclick="readOne({{ n.id }})">已读</button>{% endif %}</td>
+        </tr>
+        {% else %}<tr><td><div class="empty">暂无消息</div></td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if can.oplog %}
+<div class="card">
+  <h2><span class="dot"></span>操作日志（最近 {{ oplogs|length }} 条）</h2>
+  <form class="filters" method="get" onsubmit="return false">
+    <input id="oplogKw" placeholder="按动作/对象/详情搜索" oninput="loadOplog()">
+  </form>
+  <div style="max-height:280px;overflow:auto">
+    <table id="oplogTable">
+      {% for lg in oplogs %}
+      <tr><td style="width:110px">{{ lg.created_at[5:] }}</td><td style="width:90px">{{ lg.actor }}</td>
+          <td style="width:120px">{{ lg.action }}</td><td style="width:80px">{{ lg.target_id or '-' }}</td>
+          <td class="td-desc">{{ lg.detail[:50] }}</td></tr>
+      {% else %}<tr><td><div class="empty">暂无操作日志</div></td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function review(id, status) {
+  const note = (status === 'pass' || status === 'reject') ? prompt('备注（可留空）', '') : '';
+  await fetch(`/api/items/${id}/review`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, note: note || '' })
+  });
+  location.reload();
+}
+async function addBlack(f) {
+  const fd = new FormData(f);
+  await fetch('/api/blacklist', { method: 'POST', body: fd });
+  location.reload();
+}
+async function delBlack(u) {
+  await fetch('/api/blacklist?user_id=' + encodeURIComponent(u), { method: 'DELETE' });
+  location.reload();
+}
+async function handleAppeal(id, status) {
+  const reply = prompt(status === 'accepted' ? '申诉成立，回复卖家（可留空）：' : '驳回申诉，回复卖家（可留空）：', '');
+  if (reply === null) return;
+  const resp = await fetch(`/api/appeals/${id}/handle`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, reply: reply || '' })
+  });
+  const json = await resp.json();
+  if (!json.ok) { alert(json.error || '处理失败'); return; }
+  location.reload();
+}
+
+const escA = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** 规则治理：命中分布 + 申诉/人工改判/举报反馈 + 调参建议。 */
+async function loadGovernance() {
+  try {
+    const json = await (await fetch('/api/governance')).json();
+    if (!json.ok) return;
+    const rep = json.report, s = rep.summary;
+    document.getElementById('govVersion').textContent = '词表 ' + rep.lexicon_version;
+    document.getElementById('govSummary').innerHTML =
+      `规则 ${s.rule_count} 条 · 累计命中 ${s.total_hits} 次 · 被推翻 ${s.overturned} 次` +
+      `（误杀率 ${(s.false_positive_rate * 100).toFixed(1)}%）· 申诉 ${s.appeals} 条` +
+      `（成立 ${s.appeal_accepted} 条，${(s.appeal_accept_rate * 100).toFixed(1)}%）· 举报 ${s.reported} 次`;
+    const rows = (rep.rules || []).slice(0, 30).map(r => `
+      <tr>
+        <td>${escA(r.rule)}</td>
+        <td style="width:60px">${r.hits}</td>
+        <td style="width:70px;color:${r.overturned ? '#b91c1c' : 'inherit'}">${r.overturned}</td>
+        <td style="width:70px;color:${r.false_positive_rate >= 0.3 ? '#b91c1c' : 'inherit'}">${(r.false_positive_rate * 100).toFixed(0)}%</td>
+        <td style="width:60px">${r.reported}</td>
+        <td class="td-desc" style="color:${r.level === 'danger' ? '#b91c1c' : r.level === 'warn' ? '#b45309' : 'inherit'}">${escA(r.advice) || '—'}</td>
+      </tr>`).join('');
+    document.getElementById('govTable').innerHTML =
+      `<tr><th>规则</th><th>命中</th><th>被推翻</th><th>误杀率</th><th>举报</th><th>调参建议</th></tr>` + rows;
+  } catch (e) {
+    document.getElementById('govSummary').textContent = '规则治理数据加载失败';
+  }
+}
+
+/** 重放回归：用当前词表重跑历史数据，看规则升级影响了多少条。 */
+async function runReplay() {
+  const box = document.getElementById('govReplay');
+  box.textContent = '重放中…';
+  try {
+    const resp = await fetch('/api/replay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 200 })
+    });
+    const json = await resp.json();
+    if (!json.ok) { box.textContent = json.error || '重放失败'; return; }
+    const r = json.report;
+    const detail = (r.changes || []).slice(0, 5).map(c =>
+      `<div class="hint">#${c.id} ${escA(c.title)}：${c.old_status} → ${c.new_status}` +
+      `（${c.old_score} → ${c.new_score}，${c.direction}）</div>`).join('');
+    box.innerHTML = `重放完成：共 ${r.total} 条，${r.changed} 条结论或分数发生变化` +
+      `（一致率 ${(r.consistency * 100).toFixed(1)}%，变严 ${r.stricter} 条 / 变松 ${r.looser} 条）` + detail;
+  } catch (e) {
+    box.textContent = '重放失败：' + e;
+  }
+}
+
+/* ---------------- 运维中心：登录 / 权限 ---------------- */
+async function login(f) {
+  const fd = new FormData(f);
+  const j = await (await fetch('/api/auth/login', { method: 'POST', body: fd })).json();
+  if (!j.ok) { alert(j.error || '登录失败'); return; }
+  location.reload();
+}
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.reload();
+}
+async function createUser(f) {
+  const fd = new FormData(f);
+  const j = await (await fetch('/api/users', { method: 'POST', body: fd })).json();
+  if (!j.ok) { alert(j.error || '创建失败'); return; }
+  location.reload();
+}
+async function setRole(id, role) {
+  const j = await (await fetch(`/api/users/${id}/role`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role })
+  })).json();
+  if (!j.ok) { alert(j.error || '调整失败'); return; }
+  location.reload();
+}
+async function toggleUser(id, status) {
+  const next = status === 'active' ? 'disabled' : 'active';
+  const j = await (await fetch(`/api/users/${id}/status`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: next })
+  })).json();
+  if (!j.ok) { alert(j.error || '操作失败'); return; }
+  location.reload();
+}
+
+/* ---------------- 运维中心：导入导出 ---------------- */
+async function importData(f) {
+  const box = document.getElementById('ioResult');
+  box.textContent = '导入中…';
+  const fd = new FormData(f);
+  fd.set('dry_run', f.dry_run && f.dry_run.checked ? '1' : '0');
+  try {
+    const j = await (await fetch('/api/import', { method: 'POST', body: fd })).json();
+    if (!j.ok) { box.textContent = j.error || '导入失败'; return; }
+    const r = j.report, c = r.counts || {};
+    box.innerHTML = `导入 ${r.total} 行，成功 ${r.ok}，失败 ${r.failed}`
+      + `（通过 ${c.pass || 0} / 复核 ${c.review || 0} / 拒绝 ${c.reject || 0}）`
+      + `${r.dry_run ? '【空跑预览，未写库】' : ''}`;
+  } catch (e) { box.textContent = '导入失败：' + e; }
+}
+
+/* ---------------- 运维中心：批量任务 ---------------- */
+async function runBatch(f) {
+  const box = document.getElementById('batchResult');
+  box.textContent = '执行中…';
+  const ids = (f.ids.value || '').split(',').map(s => s.trim()).filter(Boolean).map(Number);
+  const payload = ids.length ? { ids, status: f.status.value || 'pass',
+                                 note: f.status.value || '' } : {};
+  try {
+    const j = await (await fetch('/api/batch/jobs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op: f.op.value, payload })
+    })).json();
+    if (!j.ok) { box.textContent = j.error || '执行失败'; return; }
+    const job = j.job;
+    box.textContent = `任务 #${job.id} 完成：共 ${job.total} 条，成功 ${job.success}，`
+      + `失败 ${job.failed}，耗时 ${job.duration_ms} ms`;
+    setTimeout(() => location.reload(), 600);
+  } catch (e) { box.textContent = '执行失败：' + e; }
+}
+
+/* ---------------- 运维中心：通知 ---------------- */
+async function broadcast(f) {
+  const fd = new FormData(f);
+  const j = await (await fetch('/api/notifications', { method: 'POST', body: fd })).json();
+  if (!j.ok) { alert(j.error || '发送失败'); return; }
+  alert(`已发送给 ${j.sent} 人`);
+  location.reload();
+}
+async function readAll() {
+  await fetch('/api/notifications/read-all', { method: 'POST' });
+  location.reload();
+}
+async function readOne(id) {
+  await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+  location.reload();
+}
+
+/* ---------------- 运维中心：操作日志 ---------------- */
+async function loadOplog() {
+  const kw = (document.getElementById('oplogKw') || {}).value || '';
+  try {
+    const j = await (await fetch('/api/oplog?limit=50&keyword=' + encodeURIComponent(kw))).json();
+    if (!j.ok) return;
+    const rows = (j.logs || []).map(l => `
+      <tr><td style="width:110px">${escA((l.created_at || '').slice(5))}</td>
+          <td style="width:90px">${escA(l.actor)}</td>
+          <td style="width:120px">${escA(l.action_name || l.action)}</td>
+          <td style="width:80px">${escA(l.target_id || '-')}</td>
+          <td class="td-desc">${escA((l.detail || '').slice(0, 50))}</td></tr>`).join('');
+    document.getElementById('oplogTable').innerHTML = rows || '<tr><td><div class="empty">暂无操作日志</div></td></tr>';
+  } catch (e) { /* 日志面板失败不影响主流程 */ }
+}
+
+if (document.getElementById('oplogKw')) loadOplog();
+loadGovernance();
+</script>
+{% endblock %}

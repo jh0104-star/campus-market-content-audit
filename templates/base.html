@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}校园二手交易信息智能审核与分类系统{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="header">
+  <div class="container">
+    <div class="brand">
+      <div class="logo">🛡️</div>
+      <div>
+        <h1>校园二手交易信息智能审核与分类系统</h1>
+        <p>规则引擎 + 大模型双引擎 · 违禁识别 / 虚假描述检测 / 价格异常 / 自动分类</p>
+      </div>
+    </div>
+    <div class="nav">
+      <span class="badge-engine">引擎：{{ engine }}</span>
+      <a href="/">发布审核</a>
+      <a href="/seller">卖家中心</a>
+      <a href="/admin">管理后台</a>
+    </div>
+  </div>
+</header>
+<div class="container">
+  {% block body %}{% endblock %}
+</div>
+<div class="footer">LLM 智能审核 · 规则引擎 · Flask + SQLite ｜ 课程设计演示系统</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>
