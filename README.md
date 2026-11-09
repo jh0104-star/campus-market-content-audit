@@ -2,7 +2,7 @@
 
 <p>
   <img alt="Python 3.9+" src="docs/badges/python-3.9plus.svg">
-  <img alt="tests: 85 passed" src="docs/badges/tests-85.svg">
+  <img alt="tests: 86 passed" src="docs/badges/tests-86.svg">
   <img alt="license: MIT" src="docs/badges/license.svg">
   <img alt="Flask 2.3+" src="docs/badges/flask.svg">
 </p>
@@ -72,7 +72,7 @@
 联系方式入库前掩码，命中术语在详情页高亮展示（兼顾可读性与取证）；导出默认二次脱敏；扩展模块补上了角色权限、操作日志（含被拒绝的越权尝试）、通知保留期与清理策略——把"能演示"推进到"能交付"。
 
 **7｜可验证的工程基线**
-dev / holdout **双轨评估**（44 / 28 条，防开卷效应）、6 类测试脚本（85 项 pytest 用例 + 109 项冒烟）、CI 指标门槛（指标退化阻断合并）、规则版本号回溯。每一步都给出"数据怎么说"，而非主观描述。
+dev / holdout **双轨评估**（44 / 28 条，防开卷效应）、6 类测试脚本（86 项 pytest 用例 + 102 项冒烟）、CI 指标门槛（指标退化阻断合并）、规则版本号回溯。每一步都给出"数据怎么说"，而非主观描述。
 
 ## 三、目标用户群体
 
@@ -686,7 +686,7 @@ curl -X POST http://127.0.0.1:5000/api/batch/jobs -H "Content-Type: application/
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                          # 85 项：核心不变量 + 扩展模块单元 + 扩展模块集成
+pytest -q                          # 86 项：核心不变量 + 扩展模块单元 + 扩展模块集成
 python tests/smoke_test.py         # 109 项端到端冒烟（页面 + 接口 + 审核链路 + 扩展模块）
 python tests/ui_check.py           # Streamlit 页面逻辑回归
 python tests/bench.py              # 审核链路性能基准

@@ -198,6 +198,16 @@ class AuditPipeline:
             res.decision = "pass"
         res.decision_label = DECISION_LABEL[res.decision]
 
+        # 结论口径一致性：规则硬红线已钉死「拒绝」时，语义层若仍输出"未发现违禁"，
+        # 界面上会同时出现"拒绝发布"与"未发现异常"两句互相矛盾的话，复核人无法判断该信谁。
+        # 此时以规则结论作为语义结论的口径，保证面板上一句话就能对上决策。
+        if res.decision == "reject" and rule.blocked and (llm.risk_score or 0) < 20:
+            top = max((h for h in rule.hits if h.type == "banned"),
+                      key=lambda h: h.score, default=None)
+            if top is not None:
+                llm.reason = (f"规则引擎判定为「{top.rule}」：{top.evidence}；"
+                              f"语义层未发现额外软性风险，结论以规则硬红线为准，应直接拦截。")
+
         # 4) 理由与建议：按"硬红线 → 高危 → 中危 → 低危"排序。
         # 此前按命中顺序输出，出现结论是"拒绝"、第一条理由却是"描述过短"的错位叙述，
         # 复核的人抓不到真正原因；拒绝结论必须能一句话说清依据。
@@ -223,6 +233,10 @@ class AuditPipeline:
             res.suggestions.append(llm.suggestion)
         if not res.reasons:
             res.reasons.append("规则引擎与大模型均未发现异常，商品信息完整、定价合理。")
+        if res.decision == "reject":
+            # 同上：拒绝档位下语义层可能仍给出"内容合规，可直接发布"，与决策冲突，需剔除
+            res.suggestions = [s for s in res.suggestions
+                               if "可直接发布" not in s and "内容合规" not in s]
         if not res.suggestions:
             res.suggestions.append("内容合规，可直接发布。")
         return res

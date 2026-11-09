@@ -118,3 +118,19 @@ def test_reject_without_banned_hit_has_summary_reason():
     assert res.decision == "reject"
     assert not any(h.type == "banned" for h in res.rule.hits)
     assert res.reasons[0].startswith("[综合判定]"), res.reasons[:3]
+
+
+# ------------------------------------------------------------------ #
+# 缺口五：拒绝结论与语义结论自相矛盾
+# ------------------------------------------------------------------ #
+def test_reject_conclusion_aligns_with_rule():
+    """规则已钉死拒绝时，语义结论不能再输出"未发现异常"，否则面板自相矛盾。"""
+    res = audit({
+        "title": "软中华一条 450",
+        "description": "正品软中华，一条 450，校门口自提，仅此一条",
+        "price": 450,
+    })
+    assert res.decision == "reject"
+    assert res.llm is not None
+    assert "规则引擎判定" in (res.llm.reason or "")
+    assert "未发现违禁" not in (res.llm.reason or "") or "语义层未发现额外软性风险" in res.llm.reason
