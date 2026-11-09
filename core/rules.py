@@ -471,6 +471,7 @@ class RuleEngine:
                     item: dict, full_raw: str, result: RuleResult) -> None:
         d = desc.strip()
         spam_signals = 0
+        strong_spam = 0      # 占位 / 灌水这类强信号，才够格直接拒绝
 
         if len(d) < 10:
             spam_signals += 1
@@ -478,6 +479,7 @@ class RuleEngine:
                                        "请补充成色、购入时间、转手原因等信息。", 10))
         if REPEAT_RE.search(full_raw):
             spam_signals += 1
+            strong_spam += 1
             result.hits.append(RuleHit("描述重复灌水", "fake", "medium", "正文存在连续重复字符",
                                        "请填写真实有效的商品描述。", 18))
         elif len(d) >= 8 and len(set(d)) / len(d) < 0.35:
@@ -552,6 +554,7 @@ class RuleEngine:
             placeholder = [w for w in PLACEHOLDER_WORDS if w in lite()]
         if placeholder:
             spam_signals += 1
+            strong_spam += 1
             result.hits.append(RuleHit(
                 "占位/测试内容", "fake", "medium", "、".join(placeholder[:3]),
                 "请填写真实商品信息，不要发布测试内容。", 18, terms=placeholder[:3]))
@@ -565,12 +568,21 @@ class RuleEngine:
         if placeholder and (drain or result.category_guess == "other"):
             spam_signals += 1
 
-        # 综合判定：多条低质信号叠加 = 垃圾/无效信息
+        # 综合判定：多条低质信号叠加。
+        # 只有"占位/灌水"这类强信号才够格直接拒绝；"标题短 + 描述短"在二手场景里非常常见
+        # （实测「猫粮 皇家2kg」被判拒绝 72 分），一律按垃圾信息拒绝会大面积误杀，
+        # 因此降为转人工，让人来判断而不是模型替人做决定。
         if spam_signals >= 2:
-            result.hits.append(RuleHit(
-                "垃圾/无效信息", "fake", "high",
-                f"命中 {spam_signals} 项低质特征（信息量不足/占位/重复/标题过短）",
-                "信息量严重不足，无法判断商品真实性，拒绝发布。", 70))
+            if strong_spam:
+                result.hits.append(RuleHit(
+                    "垃圾/无效信息", "fake", "high",
+                    f"命中 {spam_signals} 项低质特征（含占位/灌水等强信号）",
+                    "信息量严重不足，无法判断商品真实性，拒绝发布。", 70))
+            else:
+                result.hits.append(RuleHit(
+                    "信息量不足（转人工）", "fake", "medium",
+                    f"命中 {spam_signals} 项低质特征（标题/描述过短），未见占位或灌水",
+                    "请补充成色、购入时间与规格说明；信息补齐后可正常发布。", 45))
 
     # ---------------- 联系方式 ----------------
     def _check_contact(self, contact: str, full_raw: str, result: RuleResult) -> None:

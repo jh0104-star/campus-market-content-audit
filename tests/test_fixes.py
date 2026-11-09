@@ -61,3 +61,21 @@ def test_electric_baton_uses_correct_rule():
     })
     assert res.rule.blocked
     assert any(h.rule == "违禁品-管制器具" for h in res.rule.hits)
+
+
+# ------------------------------------------------------------------ #
+# 缺口二：标题短 + 描述短被合并成"垃圾信息"，正常商品被误杀
+# ------------------------------------------------------------------ #
+def test_short_desc_is_review_not_reject():
+    """商品本身完全正常，只是写得简略——应转人工，不该直接拒绝。"""
+    res = audit({"title": "猫粮", "description": "皇家2kg装", "price": 60})
+    assert res.decision != "reject", res.reasons
+    assert not res.rule.blocked
+    assert any("信息量不足" in h.rule for h in res.rule.hits)
+
+
+def test_placeholder_still_rejected():
+    """降档只针对"短"，占位/灌水这类强信号仍然必须拒绝，不能连带放水。"""
+    res = audit({"title": "测试测试测试", "description": "测试测试测试测试测试测试",
+                 "price": 1})
+    assert res.decision == "reject"
