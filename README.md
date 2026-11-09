@@ -1,6 +1,19 @@
 # 基于大模型的校园二手交易信息智能审核与分类系统
 
+<p>
+  <img alt="Python 3.9+" src="docs/badges/python-3.9plus.svg">
+  <img alt="tests: 85 passed" src="docs/badges/tests-85.svg">
+  <img alt="license: MIT" src="docs/badges/license.svg">
+  <img alt="Flask 2.3+" src="docs/badges/flask.svg">
+</p>
+
 面向高校二手交易平台的内容治理系统：学生发布二手信息后，系统自动完成**违禁品识别、虚假描述检测、价格异常判定与品类自动归档**，输出可解释的审核结论。
+
+<p align="center">
+  <img src="docs/screenshot.png" alt="管理后台：趋势、品类分布与逐条可解释的审核依据" width="920">
+  <br>
+  <sub>管理后台 · 近 14 日趋势与品类分布，逐条给出决策、风险分拆解与命中的规则</sub>
+</p>
 
 > **文档导航**（按需跳读）
 > 想先看这套系统解决什么问题：一（定位与差异化）→ 二（核心特性）→ 三（目标用户）→ 四（场景用例）→ 五（价值）
